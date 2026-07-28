@@ -1,5 +1,9 @@
 # git-customs
 
+[![Test](https://github.com/jackchuka/git-customs/actions/workflows/test.yml/badge.svg)](https://github.com/jackchuka/git-customs/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/jackchuka/git-customs?sort=semver)](https://github.com/jackchuka/git-customs/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **A client-side, cross-host pre-push gate that catches PII and secrets — using
 an engine you choose — before anything reaches a public remote.**
 
