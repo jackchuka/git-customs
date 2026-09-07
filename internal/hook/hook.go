@@ -30,7 +30,10 @@ type Deps struct {
 // hookArgs is the verbatim argument list git passes to a pre-push hook
 // (<remote-name> <remote-url>); it is forwarded unchanged to any chained hook.
 func Run(d Deps, hookArgs []string, stdinBytes []byte, stdout, stderr io.Writer) int {
-	remoteURL := ""
+	remoteName, remoteURL := "", ""
+	if len(hookArgs) >= 1 {
+		remoteName = hookArgs[0]
+	}
 	if len(hookArgs) >= 2 {
 		remoteURL = hookArgs[1]
 	}
@@ -70,10 +73,16 @@ func Run(d Deps, hookArgs []string, stdinBytes []byte, stdout, stderr io.Writer)
 		return chainOut()
 	}
 
-	diff, err := gitrange.Diff(d.Git, updates)
+	diff, err := gitrange.Diff(d.Git, updates, remoteName)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "git-customs: cannot build diff: %v\n", err)
 		return 1
+	}
+	// Nothing outgoing to inspect: a tag on an already-pushed commit, or a new
+	// branch whose commits the remote already has. Running the command on empty
+	// stdin pays full latency and invites a non-clear answer to a non-question.
+	if strings.TrimSpace(diff) == "" {
+		return chainOut()
 	}
 
 	cmds := d.Config.CommandList()
