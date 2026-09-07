@@ -42,7 +42,20 @@ func ParseStdin(r io.Reader) ([]Update, error) {
 // final tree diff, yet both commits are pushed and the secret lives on in remote
 // history. `git log -p` emits every commit's patch (and message) so the scanner
 // sees content that an endpoint diff would hide.
-func Diff(git func(args ...string) ([]byte, error), updates []Update) (string, error) {
+//
+// remote is the remote name git passed to the hook. A new branch has no remote
+// SHA to bound the range, so outgoing commits are found by excluding everything
+// already reachable from that remote's tracking refs. Without that exclusion the
+// walk covers the branch's entire ancestry -- including all of main -- and any
+// secret anywhere in history blocks every new branch forever, which trains
+// people to bypass the scanner rather than fix the leak.
+//
+// The exclusion relies on local remote-tracking refs. A stale or single-branch
+// clone excludes less than it could and over-scans, which fails toward a false
+// positive rather than a miss. The reverse direction is a real gap: `git fetch`
+// does not prune by default, so a tracking ref for a branch since deleted from
+// the remote still excludes commits the remote no longer has.
+func Diff(git func(args ...string) ([]byte, error), updates []Update, remote string) (string, error) {
 	var b strings.Builder
 	for _, u := range updates {
 		if u.IsDelete() {
@@ -53,7 +66,7 @@ func Diff(git func(args ...string) ([]byte, error), updates []Update) (string, e
 			err error
 		)
 		if u.IsNewBranch() {
-			out, err = git("log", "-p", "--no-color", u.LocalSHA)
+			out, err = git(append([]string{"log", "-p", "--no-color", u.LocalSHA}, excludeRemote(remote)...)...)
 		} else {
 			out, err = git("log", "-p", "--no-color", u.RemoteSHA+".."+u.LocalSHA)
 		}
@@ -63,4 +76,18 @@ func Diff(git func(args ...string) ([]byte, error), updates []Update) (string, e
 		b.Write(out)
 	}
 	return b.String(), nil
+}
+
+// excludeRemote builds the "--not --remotes=<name>" arguments that drop commits
+// the named remote already has. Git passes a remote name, but a push straight to
+// a URL passes that URL instead, which no tracking ref is named after. Nothing
+// local records what that destination already holds, so no exclusion is applied
+// and the walk over-scans. Bare --remotes would be the opposite of safe here: it
+// excludes everything reachable from every tracking ref, so pushing an
+// already-fetched branch to a fresh URL would leave nothing to scan at all.
+func excludeRemote(remote string) []string {
+	if remote == "" || strings.ContainsAny(remote, "/:") {
+		return nil
+	}
+	return []string{"--not", "--remotes=" + remote}
 }

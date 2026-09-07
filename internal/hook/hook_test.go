@@ -43,6 +43,22 @@ func TestBlocksOnFinding(t *testing.T) {
 	assert.Contains(t, errOut.String(), "FOUND secret")
 }
 
+// A tag on an already-pushed commit, or a new branch the remote already has,
+// produces no outgoing patch. There is nothing to ask about, so the command must
+// not run -- asked about nothing, it answers with prose that fails clear_pattern
+// and blocks the push.
+func TestSkipsEmptyDiffWithoutRunningCommand(t *testing.T) {
+	d := baseDeps()
+	d.Git = func(args ...string) ([]byte, error) { return nil, nil }
+	d.Exec = func(context.Context, string, []string, string) runner.Result {
+		t.Fatal("command must not run when there is nothing outgoing")
+		return runner.Result{}
+	}
+	var out, errOut bytes.Buffer
+	require.Equal(t, 0, Run(d, []string{"origin", "git@github.com:jackchuka/blog.git"}, []byte(pushLine), &out, &errOut))
+	assert.Empty(t, errOut.String(), "empty diff must not print an indicator")
+}
+
 func TestSkipsPrivateWithoutRunningCommand(t *testing.T) {
 	d := baseDeps()
 	d.GH = func(args ...string) ([]byte, error) { return []byte(`{"visibility":"private"}`), nil }
